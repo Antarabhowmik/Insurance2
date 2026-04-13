@@ -5,31 +5,16 @@
 import streamlit as st
 import pandas as pd
 import joblib
-import sys
 
 # ================================
-# 🔥 FORCE SKLEARN COMPATIBILITY PATCH
+# 🔥 FIX SKLEARN ERROR (_RemainderColsList)
 # ================================
-try:
-    import sklearn
-    import sklearn.compose._column_transformer as ct
+import sklearn.compose._column_transformer as ct
 
-    # Fix missing internal class (_RemainderColsList)
-    if not hasattr(ct, "_RemainderColsList"):
-        class _RemainderColsList(list):
-            pass
-        ct._RemainderColsList = _RemainderColsList
-
-except Exception as e:
-    print("Patch warning:", e)
-
-# ================================
-# IMPORTANT IMPORTS (REQUIRED FOR MODEL)
-# ================================
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.linear_model import LinearRegression
+if not hasattr(ct, "_RemainderColsList"):
+    class _RemainderColsList(list):
+        pass
+    ct._RemainderColsList = _RemainderColsList
 
 # ================================
 # PAGE CONFIG
@@ -41,36 +26,21 @@ st.set_page_config(
 )
 
 # ================================
-# UI
+# TITLE
 # ================================
 st.title("💰 Insurance Cost Prediction")
 st.caption("Smart ML-based Insurance Price Estimator")
 
 # ================================
-# LOAD MODEL (SAFE + FALLBACK)
+# LOAD MODEL
 # ================================
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load("model.pkl")
-        return model
-
+        return joblib.load("model.pkl")
     except Exception as e:
-        st.warning("⚠️ Model load failed, using fallback logic")
-        st.error(f"Error: {e}")
-
-        # 🔥 FALLBACK MODEL (MANUAL LOGIC)
-        def fallback_predict(df):
-            # simple approximation formula
-            base = 2000
-            age_factor = df["age"].values[0] * 50
-            bmi_factor = df["bmi"].values[0] * 100
-            child_factor = df["children"].values[0] * 500
-            smoker_factor = 20000 if df["smoker"].values[0] == "yes" else 0
-
-            return [base + age_factor + bmi_factor + child_factor + smoker_factor]
-
-        return fallback_predict
+        st.error(f"❌ Model Loading Failed: {e}")
+        st.stop()
 
 model = load_model()
 
@@ -94,22 +64,36 @@ with col2:
 # ================================
 if st.button("🚀 Predict Insurance Cost"):
 
-    input_df = pd.DataFrame({
-        "age": [age],
-        "sex": [sex],
-        "bmi": [bmi],
-        "children": [children],
-        "smoker": [smoker],
-        "region": [region]
-    })
-
     try:
-        # If real model
-        if hasattr(model, "predict"):
-            prediction = model.predict(input_df)[0]
-        else:
-            # fallback function
-            prediction = model(input_df)[0]
+        # ================================
+        # 🔥 MANUAL ONE-HOT ENCODING (FIX)
+        # ================================
+        input_dict = {
+            "age": age,
+            "bmi": bmi,
+            "children": children,
+
+            # Sex
+            "sex_male": 1 if sex == "male" else 0,
+            "sex_female": 1 if sex == "female" else 0,
+
+            # Smoker
+            "smoker_yes": 1 if smoker == "yes" else 0,
+            "smoker_no": 1 if smoker == "no" else 0,
+
+            # Region
+            "region_northeast": 1 if region == "northeast" else 0,
+            "region_northwest": 1 if region == "northwest" else 0,
+            "region_southeast": 1 if region == "southeast" else 0,
+            "region_southwest": 1 if region == "southwest" else 0,
+        }
+
+        input_df = pd.DataFrame([input_dict])
+
+        # ================================
+        # PREDICT
+        # ================================
+        prediction = model.predict(input_df)[0]
 
         st.success(f"💰 Estimated Cost: ₹ {prediction:,.2f}")
 
