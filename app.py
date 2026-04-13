@@ -5,6 +5,31 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import sys
+
+# ================================
+# 🔥 FORCE SKLEARN COMPATIBILITY PATCH
+# ================================
+try:
+    import sklearn
+    import sklearn.compose._column_transformer as ct
+
+    # Fix missing internal class (_RemainderColsList)
+    if not hasattr(ct, "_RemainderColsList"):
+        class _RemainderColsList(list):
+            pass
+        ct._RemainderColsList = _RemainderColsList
+
+except Exception as e:
+    print("Patch warning:", e)
+
+# ================================
+# IMPORTANT IMPORTS (REQUIRED FOR MODEL)
+# ================================
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import LinearRegression
 
 # ================================
 # PAGE CONFIG
@@ -12,65 +37,42 @@ import joblib
 st.set_page_config(
     page_title="Insurance Predictor",
     page_icon="💰",
-    layout="wide"
+    layout="centered"
 )
 
 # ================================
-# LOAD MODEL (FAST & CACHED)
+# UI
+# ================================
+st.title("💰 Insurance Cost Prediction")
+st.caption("Smart ML-based Insurance Price Estimator")
+
+# ================================
+# LOAD MODEL (SAFE + FALLBACK)
 # ================================
 @st.cache_resource
 def load_model():
-    return joblib.load("model.pkl")
+    try:
+        model = joblib.load("model.pkl")
+        return model
 
-# ================================
-# CUSTOM CSS (PREMIUM FUTURISTIC UI)
-# ================================
-st.markdown("""
-<style>
-body {
-    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-}
-.main {
-    background: rgba(255,255,255,0.05);
-    padding: 20px;
-    border-radius: 20px;
-    backdrop-filter: blur(12px);
-}
-h1 {
-    text-align: center;
-    color: #00ffe1;
-    font-size: 40px;
-}
-.stButton>button {
-    width: 100%;
-    height: 55px;
-    border-radius: 14px;
-    font-size: 18px;
-    background: linear-gradient(45deg, #00ffe1, #007cf0);
-    color: black;
-    border: none;
-    transition: 0.3s;
-}
-.stButton>button:hover {
-    transform: scale(1.05);
-}
-.result-box {
-    background: linear-gradient(45deg, #00ffe1, #00c6ff);
-    padding: 25px;
-    border-radius: 15px;
-    text-align: center;
-    font-size: 28px;
-    font-weight: bold;
-    color: black;
-    margin-top: 20px;
-}
-</style>
-""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning("⚠️ Model load failed, using fallback logic")
+        st.error(f"Error: {e}")
 
-# ================================
-# TITLE
-# ================================
-st.markdown("<h1>💰 Insurance Cost Prediction</h1>", unsafe_allow_html=True)
+        # 🔥 FALLBACK MODEL (MANUAL LOGIC)
+        def fallback_predict(df):
+            # simple approximation formula
+            base = 2000
+            age_factor = df["age"].values[0] * 50
+            bmi_factor = df["bmi"].values[0] * 100
+            child_factor = df["children"].values[0] * 500
+            smoker_factor = 20000 if df["smoker"].values[0] == "yes" else 0
+
+            return [base + age_factor + bmi_factor + child_factor + smoker_factor]
+
+        return fallback_predict
+
+model = load_model()
 
 # ================================
 # INPUT SECTION
@@ -88,37 +90,28 @@ with col2:
     region = st.selectbox("Region", ["southwest", "southeast", "northwest", "northeast"])
 
 # ================================
-# PREDICTION BUTTON
+# PREDICTION
 # ================================
 if st.button("🚀 Predict Insurance Cost"):
 
-    # Load model only when needed (faster startup)
-    model = load_model()
+    input_df = pd.DataFrame({
+        "age": [age],
+        "sex": [sex],
+        "bmi": [bmi],
+        "children": [children],
+        "smoker": [smoker],
+        "region": [region]
+    })
 
-    # Input validation
-    if bmi <= 0:
-        st.error("❌ BMI must be positive")
-    else:
-        # Create DataFrame (IMPORTANT FIX)
-        input_df = pd.DataFrame({
-            "age": [age],
-            "sex": [sex],
-            "bmi": [bmi],
-            "children": [children],
-            "smoker": [smoker],
-            "region": [region]
-        })
+    try:
+        # If real model
+        if hasattr(model, "predict"):
+            prediction = model.predict(input_df)[0]
+        else:
+            # fallback function
+            prediction = model(input_df)[0]
 
-        try:
-            # Loading animation
-            with st.spinner("🔮 Predicting... Please wait"):
-                prediction = model.predict(input_df)[0]
+        st.success(f"💰 Estimated Cost: ₹ {prediction:,.2f}")
 
-            # Show result
-            st.markdown(
-                f'<div class="result-box">💰 Estimated Cost: ₹ {prediction:,.2f}</div>',
-                unsafe_allow_html=True
-            )
-
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
+    except Exception as e:
+        st.error(f"❌ Prediction Error: {e}")
