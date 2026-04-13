@@ -16,16 +16,14 @@ st.set_page_config(
 )
 
 # ================================
-# LOAD MODEL
+# LOAD MODEL (FAST & CACHED)
 # ================================
 @st.cache_resource
 def load_model():
     return joblib.load("model.pkl")
 
-model = load_model()
-
 # ================================
-# CUSTOM CSS (FUTURISTIC UI)
+# CUSTOM CSS (PREMIUM FUTURISTIC UI)
 # ================================
 st.markdown("""
 <style>
@@ -45,21 +43,26 @@ h1 {
 }
 .stButton>button {
     width: 100%;
-    height: 50px;
-    border-radius: 12px;
+    height: 55px;
+    border-radius: 14px;
     font-size: 18px;
     background: linear-gradient(45deg, #00ffe1, #007cf0);
     color: black;
     border: none;
+    transition: 0.3s;
+}
+.stButton>button:hover {
+    transform: scale(1.05);
 }
 .result-box {
     background: linear-gradient(45deg, #00ffe1, #00c6ff);
     padding: 25px;
     border-radius: 15px;
     text-align: center;
-    font-size: 26px;
+    font-size: 28px;
     font-weight: bold;
     color: black;
+    margin-top: 20px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -85,27 +88,37 @@ with col2:
     region = st.selectbox("Region", ["southwest", "southeast", "northwest", "northeast"])
 
 # ================================
-# PREDICTION
+# PREDICTION BUTTON
 # ================================
 if st.button("🚀 Predict Insurance Cost"):
 
-    # 🔥 IMPORTANT: Use DataFrame (Fix for your error)
-    input_df = pd.DataFrame({
-        "age": [age],
-        "sex": [sex],
-        "bmi": [bmi],
-        "children": [children],
-        "smoker": [smoker],
-        "region": [region]
-    })
+    # Load model only when needed (faster startup)
+    model = load_model()
 
-    try:
-        prediction = model.predict(input_df)[0]
+    # Input validation
+    if bmi <= 0:
+        st.error("❌ BMI must be positive")
+    else:
+        # Create DataFrame (IMPORTANT FIX)
+        input_df = pd.DataFrame({
+            "age": [age],
+            "sex": [sex],
+            "bmi": [bmi],
+            "children": [children],
+            "smoker": [smoker],
+            "region": [region]
+        })
 
-        st.markdown(
-            f'<div class="result-box">💰 Estimated Cost: ₹ {prediction:,.2f}</div>',
-            unsafe_allow_html=True
-        )
+        try:
+            # Loading animation
+            with st.spinner("🔮 Predicting... Please wait"):
+                prediction = model.predict(input_df)[0]
 
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
+            # Show result
+            st.markdown(
+                f'<div class="result-box">💰 Estimated Cost: ₹ {prediction:,.2f}</div>',
+                unsafe_allow_html=True
+            )
+
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
